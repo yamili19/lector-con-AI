@@ -1,0 +1,9 @@
+from docx.types.abstract import BaseModel
+
+
+class DocxRequest(BaseModel):
+    method: str
+    url: str
+    params: str | None = None
+    files: str | None = None
+    headers: dict | None = None

@@ -1,0 +1,36 @@
+from pydantic import model_validator
+from typing_extensions import Self
+
+from docx.types.abstract import BaseModel
+
+
+class AttributeExtractionRequest(BaseModel):
+    """
+    A class representing a request for attribute extraction.
+    """
+    file_path: str
+    # source_text: str
+    # attributes_to_extract: List[str]
+    # max_results: Optional[int] = None
+    # language: str = "en"
+    # confidence_threshold: float = 0.5
+
+    @model_validator(mode="after")
+    def validate_request(self) -> Self:
+        """
+        Validate the request parameters after initialization.
+        """
+        if not self.file_path:
+            raise ValueError("File Path cannot be empty")
+
+        return self
+
+
+class AttributeExtractionResponse(BaseModel):
+    request_id: str | None
+
+    file_name: str | None
+
+    page_number: int | None
+
+    attribute_results: dict | None

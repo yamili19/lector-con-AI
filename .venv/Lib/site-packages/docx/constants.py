@@ -1,0 +1,6 @@
+
+BASE_URL = "https://docxdemoapi.centralindia.cloudapp.azure.com"
+
+MISSING_API_KEY_ERROR_MESSAGE = """The api key is not set. Please set
+the DOCX_API_KEY environment variable or pass the api key as a parameter.
+Find your Docx API key at https://app.docx.ai/account"""

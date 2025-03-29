@@ -1,0 +1,4 @@
+import importlib.metadata
+
+#get version from pyproject.toml
+# VERSION = importlib.metadata.version("docx")

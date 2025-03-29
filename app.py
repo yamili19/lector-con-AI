@@ -1,91 +1,85 @@
 from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 from docx import Document
 import PyPDF2
 import io
-from openai import OpenAI
-import mammoth
+import google.generativeai as genai
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv()  # Cargar las variables de entorno desde el archivo .env
 
 app = Flask(__name__)
-api_key = os.getenv('OPENAI_API_KEY')
+CORS(app)
+# Configurar en app.py
+gemini_api_key = os.getenv('GEMINI_API_KEY')  # Crear en Google AI Studio
+genai.configure(api_key=gemini_api_key)
 
-client = OpenAI(api_key ='api_key')
-
-
-# Función para extraer texto del archivo
-def extract_text(file):
-    if file.filename.endswith('.docx'):
-        # Procesar archivo DOCX
-        doc = Document(io.BytesIO(file.read()))
-        return [p.text for p in doc.paragraphs if p.text.strip()]
-    elif file.filename.endswith('.pdf'):
-        # Procesar archivo PDF
-        pdf = PyPDF2.PdfReader(file)
-        text = []
-        for page in pdf.pages:
-            text.extend(page.extract_text().split('\n'))
-        return [t for t in text if t.strip()]
-    return []
-
-
-# Ruta principal (inicio)
 @app.route('/')
 def index():
     return render_template('index.html')
 
 
-# Ruta para procesar el archivo (DOCX o PDF)
+def extract_text(file):
+    if file.filename.endswith('.docx'):
+        doc = Document(io.BytesIO(file.read()))
+        return [{"text": p.text} for p in doc.paragraphs if p.text.strip()]
+    elif file.filename.endswith('.pdf'):
+        pdf = PyPDF2.PdfReader(file)
+        text = []
+        for page in pdf.pages:
+            text.append(page.extract_text())
+        return [{"text": t} for t in text if t.strip()]
+    return []
+
+
 @app.route('/process', methods=['POST'])
 def process_file():
-    file = request.files['file']
-    paragraphs = extract_text(file)
-
-    # Si es un archivo DOCX, lo convertimos a HTML con Mammoth para facilitar su visualización
-    if file.filename.endswith('.docx'):
-        result = mammoth.convert_to_html(file)
-        return jsonify({"html": result.value})
-
-    # Para PDFs simplemente devolvemos el texto extraído
-    return jsonify([{"text": p} for p in paragraphs])
-
-
-# Ruta para complementar la información usando OpenAI
-@app.route('/complement', methods=['POST'])
-def complement_info():
-    text = request.json['text']
-
     try:
-        response = client.chat.completions.create(  # Nueva sintaxis
-            model="gpt-3.5-turbo",
-            messages=[{
-                "role": "user",
-                "content": f"Complementa esta información y menciona 2 fuentes académicas reales: {text}"
-            }]
-        )
-
-        # Nueva forma de acceder a la respuesta
-        complement = response.choices[0].message.content
-        sources = extract_sources(complement)  # Función para extraer fuentes
-
-        return jsonify({
-            "complement": complement,
-            "sources": sources
-        })
-
+        file = request.files['file']
+        paragraphs = extract_text(file)
+        return jsonify(paragraphs)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-def extract_sources(text):
-    # Implementa lógica para extraer fuentes del texto (ejemplo básico)
-    import re
-    sources = re.findall(r'Fuente:\s*(.*?)(?=\n|$)', text)
-    return sources if sources else ["Fuentes académicas estándar"]
+@app.route('/complement', methods=['POST'])
+def complement_info():
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
 
+        if not text:
+            return jsonify({"error": "Texto vacío"}), 400
 
-# Ejecutar la aplicación
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(
+            f"Como experto académico, complementa esta información y provee EXACTAMENTE 2 referencias "
+            f"en formato: • NOMBRE_FUENTE (URL_OFICIAL)\nTexto:\n{text}"
+        )
+
+        if not response.text:
+            return jsonify({"error": "Respuesta inválida"}), 500
+
+        # Extracción mejorada de fuentes
+        content = response.text.replace('•', '•')  # Normalizar viñetas
+        sources = re.findall(
+            r'(?:•|\d+\.)\s*([^\(\n]+?)\s*\((\bhttps?:\/\/[^\s\)]+)\)',
+            content,
+            flags=re.IGNORECASE
+        )
+
+        return jsonify({
+            "complement": content,
+            "sources": [{"name": s[0].strip(), "url": s[1]} for s in sources[:2]] or [
+                {"name": "Google Scholar", "url": "https://scholar.google.com"}
+            ]
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error: {str(e)}")
+        return jsonify({"error": "Error en el servidor"}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)

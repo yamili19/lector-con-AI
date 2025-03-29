@@ -1,0 +1,84 @@
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+#preview {
+    margin-top: 20px;
+}
+
+.paragraph {
+    margin-bottom: 20px;
+    border-bottom: 1px solid #ccc;
+    padding: 10px;
+    cursor: pointer;
+    transition: background 0.3s;
+    display: block !important;
+    opacity: 1;
+}
+
+.paragraph:hover {
+    background: #f5f5f5;
+}
+
+.error {
+    color: #dc3545;
+    padding: 10px;
+    background: #ffeef0;
+    border-radius: 4px;
+}
+
+/* Garantizar visibilidad */
+.ai-response {
+    display: block !important;
+    opacity: 1;
+    margin-top: 15px;
+}
+
+.ai-content p {
+    margin: 8px 0;
+    line-height: 1.6;
+}
+
+.source-link {
+    word-break: break-all; /* Para URLs largas */
+}
+
+/* Agregar estas reglas */
+.ai-content {
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 15px;
+}
+
+.sources-title {
+    font-weight: bold;
+    margin: 10px 0;
+}
+
+.source-link:hover {
+    background: #e8f0fe;
+}
+
+.link-icon {
+    font-size: 0.8em;
+    margin-left: 5px;
+}
+
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(0,0,0,.3);
+    border-radius: 50%;
+    border-top-color: #000;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

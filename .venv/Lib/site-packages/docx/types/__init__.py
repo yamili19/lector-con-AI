@@ -1,0 +1,12 @@
+from docx.types.abstract import DocxClient
+from docx.types.attributeextraction import (
+    AttributeExtractionRequest,
+    AttributeExtractionResponse,
+)
+from docx.types.common import DocxRequest
+__all__ = [
+    "DocxClient",
+    "AttributeExtractionRequest",
+    "AttributeExtractionResponse",
+    "DocxRequest",
+]

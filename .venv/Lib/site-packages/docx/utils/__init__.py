@@ -1,0 +1,5 @@
+from docx.utils.api_helpers import default_api_key
+
+__all__ = [
+    "default_api_key",
+]

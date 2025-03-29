@@ -4,37 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lector de Documentos Inteligente</title>
-    <style>
-        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
-        #preview { margin-top: 20px; }
-        .paragraph {
-            margin-bottom: 20px;
-            border-bottom: 1px solid #ccc;
-            padding: 10px;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        .paragraph:hover { background: #f5f5f5; }
-        .ai-response {
-            margin-top: 10px;
-            padding: 10px;
-            background: #e3f2fd;
-            border-radius: 5px;
-            display: none;
-        }
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(0,0,0,.3);
-            border-radius: 50%;
-            border-top-color: #000;
-            animation: spin 1s ease-in-out infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-    </style>
+    <link rel="stylesheet" href="static/css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
 </head>
 <body>
@@ -45,111 +16,10 @@
         <div id="content"></div>
     </div>
 
+    <script src="static/js/app.js"></script>
     <script>
-        let currentParagraph = null;
-        const synth = window.speechSynthesis;
-
-        document.getElementById('fileInput').addEventListener('change', async function(e) {
-            const file = e.target.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
-
-            showLoading('Procesando documento...');
-
-            try {
-                const response = await fetch('/process', { method: 'POST', body: formData });
-                const result = await response.json();
-
-                let paragraphs = [];
-                if (file.name.endsWith('.pdf')) {
-                    const pdfDocument = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-                    let textContent = '';
-
-                    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-                        const page = await pdfDocument.getPage(pageNum);
-                        const content = await page.getTextContent();
-                        textContent += content.items.map(item => item.str).join(' ') + '\n';
-                    }
-
-                    paragraphs = textContent.split('\n').filter(p => p.trim());
-                } else {
-                    paragraphs = result.paragraphs;
-                }
-
-                renderParagraphs(paragraphs);
-            } catch (error) {
-                showError(error);
-            } finally {
-                hideLoading();
-            }
-        });
-
-        function renderParagraphs(paragraphs) {
-            const contentDiv = document.getElementById('content');
-            contentDiv.innerHTML = '';
-
-            paragraphs.forEach((para, index) => {
-                const paraDiv = document.createElement('div');
-                paraDiv.className = 'paragraph';
-                paraDiv.innerHTML = `
-                    <div class="original-text">${para.text || para}</div>
-                    <div class="ai-response" id="ai-${index}"></div>
-                `;
-
-                paraDiv.addEventListener('click', () => handleParagraphClick(paraDiv, para.text || para));
-                contentDiv.appendChild(paraDiv);
-            });
-        }
-
-        async function handleParagraphClick(paraDiv, text) {
-            if (currentParagraph === paraDiv) return;
-
-            currentParagraph = paraDiv;
-            const aiResponse = paraDiv.querySelector('.ai-response');
-
-            // Leer el texto
-            const utterance = new SpeechSynthesisUtterance(text);
-            synth.speak(utterance);
-
-            // Cuando termine de leer
-            utterance.onend = async () => {
-                showLoading('Generando complemento...', aiResponse);
-
-                try {
-                    const response = await fetch('/complement', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ text: text })
-                    });
-
-                    const data = await response.json();
-                    aiResponse.innerHTML = `
-                        <strong>Información complementaria:</strong>
-                        <p>${data.complement}</p>
-                        <small>Fuentes: ${data.sources.join(', ')}</small>
-                    `;
-                    aiResponse.style.display = 'block';
-                } catch (error) {
-                    aiResponse.innerHTML = `Error: ${error.message}`;
-                    aiResponse.style.display = 'block';
-                } finally {
-                    hideLoading(aiResponse);
-                }
-            };
-        }
-
-        function showLoading(message, container = document.getElementById('status')) {
-            container.innerHTML = `<div class="loading"></div> ${message}`;
-        }
-
-        function hideLoading(container = document.getElementById('status')) {
-            container.innerHTML = '';
-        }
-
-        function showError(error) {
-            const statusDiv = document.getElementById('status');
-            statusDiv.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
-        }
+        // Agregar al inicio del archivo
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
     </script>
 </body>
 </html>

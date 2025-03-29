@@ -1,0 +1,6 @@
+from docx.resources.attributeextraction import AttributeExtraction
+
+
+__all__ = [
+    "AttributeExtraction"
+]

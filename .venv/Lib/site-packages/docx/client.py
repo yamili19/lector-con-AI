@@ -1,0 +1,40 @@
+import os
+from docx import resources
+from docx.types import DocxClient
+from docx.error import AuthenticationError
+
+from docx.constants import BASE_URL
+
+
+class Docx:
+    attribute_extraction: resources.AttributeExtraction
+
+    client: DocxClient
+
+    def __init__(
+            self,
+            api_key: str | None = None,
+            base_url: str | None = None):
+        if not api_key:
+            api_key = os.environ.get("DOCX_API_KEY")
+
+        if not api_key:
+            raise AuthenticationError(
+                """The api key is not set. Please set the DOCX_API_KEY
+                environment variable or pass the api key as a parameter."""
+                )
+
+        if not base_url:
+            base_url = os.environ.get("DOCX_BASE_URL")
+
+        if not base_url:
+            base_url = BASE_URL
+
+        self.client = DocxClient(
+            api_key
+        )
+
+        self.attribute_extraction = resources.AttributeExtraction(self.client)
+
+
+Client = Docx
