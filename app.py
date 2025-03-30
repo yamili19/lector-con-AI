@@ -55,8 +55,20 @@ def complement_info():
 
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content(
-            f"Como experto académico, complementa esta información y provee EXACTAMENTE 2 referencias "
-            f"en formato: • NOMBRE_FUENTE (URL_OFICIAL)\nTexto:\n{text}"
+            f"Como experto académico, analiza el texto proporcionado y complementa su información con:\n"
+
+            f"1) Datos adicionales relevantes (contexto teórico, cifras actualizadas, "
+            f"ejemplos prácticos o controversias académicas).\n"
+            
+            f"EXACTAMENTE 2 referencias académicas confiables y especializadas en formato:\n"
+            f"• NOMBRE_FUENTE (URL_OFICIAL)\n"
+            f"(Prioriza fuentes institucionales, revistas científicas o bases de datos reconocidas "
+            f"como PubMed, JSTOR, o repositorios " f"universitarios. Evita blogs o sitios sin revisión por pares).\n"
+            
+            f"Asegúrate de que las referencias respalden directamente los datos agregados y "
+            f"estén vinculadas al tema central del texto.\n"
+            f"Texto para analizar:\n"
+            f"{text}"
         )
 
         if not response.text:
