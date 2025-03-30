@@ -55,13 +55,63 @@ function renderParagraphs(paragraphs) {
         paraDiv.className = 'paragraph';
         paraDiv.innerHTML = `
             <div class="original-text">${para.text || para}</div>
+            <button class="ai-trigger-button">Obtener información complementaria ⚡</button>
             <div class="ai-response" id="ai-${index}"></div>
         `;
 
-        paraDiv.addEventListener('click', () => handleParagraphClick(paraDiv, para.text || para));
+        const aiResponse = paraDiv.querySelector('.ai-response');
+        const button = paraDiv.querySelector('.ai-trigger-button');
+
+        // Evento directo para el botón
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fetchComplement(para.text || para, aiResponse);
+        });
+
+        // Evento original para el texto
+        paraDiv.querySelector('.original-text').addEventListener('click', () => {
+            handleParagraphClick(paraDiv, para.text || para);
+        });
+
         contentDiv.appendChild(paraDiv);
     });
 }
+
+function renderAIResponse(data, container) {
+    container.innerHTML = `
+        <div class="ai-header">📚 INFORMACIÓN AMPLIADA:</div>
+        <div class="ai-content">
+            ${data.complement.replace(/\n/g, '<br>')}
+        </div>
+        <div class="ai-sources">
+            <div class="sources-title">🔍 FUENTES:</div>
+            ${data.sources.map(s => `
+                <a href="${s.url}" target="_blank" class="source-link">
+                    ${s.name.replace(/\*\*/g, '')} <i class="link-icon fas fa-external-link-alt"></i>
+                </a>
+            `).join('')}
+        </div>
+    `;
+}
+
+async function fetchComplement(text, aiResponseElement) {
+    aiResponseElement.innerHTML = '<div class="debug">Cargando...</div>';
+    aiResponseElement.style.display = 'block';
+
+    try {
+        const response = await fetch('/complement', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+
+        const data = await response.json();
+        renderAIResponse(data, aiResponseElement);
+    } catch (error) {
+        aiResponseElement.innerHTML = `<div style="color: red; padding: 10px; background: #ffeef0;">ERROR: ${error.message}</div>`;
+    }
+}
+
 
 async function handleParagraphClick(paraDiv, text) {
     if (currentParagraph === paraDiv) return;
