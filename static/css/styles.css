@@ -1,7 +1,7 @@
 .container {
-    max-width: 800px;
+    max-width: 95%;
     margin: 2rem auto;
-    padding: 2rem;
+    padding: 1.5rem;
     background: white;
     border-radius: 12px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -90,8 +90,9 @@ body {
     color: var(--primary-color);
     margin-bottom: 0.8rem;
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
 }
 
 .ai-trigger-button {
@@ -109,12 +110,10 @@ body {
 
 
 .custom-upload {
-    border: 2px dashed var(--border-color);
-    border-radius: 8px;
-    padding: 2rem 1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    background-color: var(--background-light);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 150px;
 }
 
 
@@ -130,10 +129,8 @@ body {
 }
 
 .original-text {
-    font-size: 1rem;
-    line-height: 1.6;
-    color: var(--text-dark);
-    margin-bottom: 1rem;
+    font-size: clamp(0.9rem, 3vw, 1rem);
+    line-height: 1.5;
 }
 
 .source-link {
@@ -145,6 +142,7 @@ body {
     padding: 0.5rem;
     border-radius: 4px;
     transition: background 0.2s;
+    word-break: break-all;
 }
 
 .ai-content {
@@ -186,4 +184,62 @@ body {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .container {
+        margin: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
+    }
+
+    h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .custom-upload {
+        padding: 1.5rem 0.5rem;
+    }
+
+    .upload-icon {
+        font-size: 1.5rem;
+    }
+
+    .paragraph {
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .ai-trigger-button {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        margin: 0.5rem;
+        padding: 0.5rem;
+    }
+
+    h1 {
+        font-size: 1.3rem;
+    }
+
+    .upload-text {
+        font-size: 0.8rem;
+        padding: 0 0.5rem;
+    }
+
+    .ai-content {
+        max-height: 200px;
+        padding: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .source-link {
+        font-size: 0.8rem;
+    }
 }
