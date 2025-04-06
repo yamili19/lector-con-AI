@@ -1,5 +1,12 @@
 let currentParagraph = null;
 const synth = window.speechSynthesis;
+let fullDocumentText = '';
+const chatMessages = document.getElementById('chatMessages');
+const userQuestionInput = document.getElementById('userQuestion');
+const sendButton = document.getElementById('sendQuestion');
+
+let chatHistory = [];
+let isTyping = false;
 const formatText = (text) => {
     return text
         .replace(/\*\*/g, '') // Eliminar negritas
@@ -49,6 +56,10 @@ document.getElementById('fileInput').addEventListener('change', async function(e
 function renderParagraphs(paragraphs) {
     const contentDiv = document.getElementById('content');
     contentDiv.innerHTML = '';
+    fullDocumentText = paragraphs.map(p => p.text || p).join('\n\n');
+
+    // Generar sugerencias después de cargar el documento
+    generateSuggestions();
 
     paragraphs.forEach((para, index) => {
         const paraDiv = document.createElement('div');
@@ -76,6 +87,173 @@ function renderParagraphs(paragraphs) {
         contentDiv.appendChild(paraDiv);
     });
 }
+
+document.getElementById('downloadChat').addEventListener('click', downloadChat);
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Mensaje inicial del asistente
+    setTimeout(() => {
+        addMessageToChat("¡Hola! Soy tu asistente para analizar documentos. Sube un archivo y hazme preguntas sobre su contenido.");
+    }, 1000);
+});
+
+function addMessageToChat(text, isUser = false) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+
+    let processedText = text;
+    processedText = processedText.replace(/"([^"]+)"/g, '<div class="document-quote">$1</div>');
+
+    if (processedText.includes("Información adicional:")) {
+        const parts = processedText.split("Información adicional:");
+        processedText = parts[0] +
+            '<div class="additional-info"><strong>Información adicional:</strong>' +
+            parts[1].replace(/Fuente:\s*(.+?)\s*(\(https?:\/\/[^\s)]+)?/g,
+            '<div class="external-source">Fuente: <a href="$2" target="_blank">$1</a></div>') +
+            '</div>';
+    }
+
+    messageDiv.innerHTML = processedText;
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Guardar en el historial
+    chatHistory.push({
+        text: text,
+        isUser: isUser,
+        timestamp: new Date().toISOString()
+    });
+}
+
+function showTypingIndicator() {
+    if (isTyping) return;
+
+    isTyping = true;
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'typing-indicator';
+    typingDiv.id = 'typingIndicator';
+    typingDiv.innerHTML = `
+        <div>Asistente está escribiendo...</div>
+        <div class="typing-dots">
+            <span></span>
+            <span></span>
+            <span></span>
+        </div>
+    `;
+    chatMessages.appendChild(typingDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function hideTypingIndicator() {
+    isTyping = false;
+    const typingIndicator = document.getElementById('typingIndicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
+    }
+}
+
+async function handleUserQuestion() {
+    const question = userQuestionInput.value.trim();
+    if (!question || !fullDocumentText) return;
+
+    addMessageToChat(question, true);
+    userQuestionInput.value = '';
+    showTypingIndicator();
+
+    try {
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: question,
+                document_text: fullDocumentText
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+
+        hideTypingIndicator();
+        addMessageToChat(data.answer);
+
+    } catch (error) {
+        hideTypingIndicator();
+        addMessageToChat(`Error: ${error.message}`);
+    }
+}
+
+async function generateSuggestions() {
+    if (!fullDocumentText) return;
+
+    try {
+        const response = await fetch('/suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                document_text: fullDocumentText
+            })
+        });
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+
+        displaySuggestions(data.questions);
+    } catch (error) {
+        console.error("Error generando sugerencias:", error);
+        // Fallback: generar sugerencias localmente
+        const fallbackQuestions = [
+            "¿Cuál es el tema principal?",
+            "¿Qué métodos se mencionan?",
+            "¿Cuáles son las conclusiones?",
+            "¿Quiénes son los autores?",
+            "¿Qué fuentes se citan?"
+        ];
+        displaySuggestions(fallbackQuestions);
+    }
+}
+
+function displaySuggestions(questions) {
+    const container = document.getElementById('suggestionsList');
+    container.innerHTML = '';
+
+    questions.forEach(question => {
+        const chip = document.createElement('div');
+        chip.className = 'suggestion-chip';
+        chip.textContent = question;
+        chip.addEventListener('click', () => {
+            userQuestionInput.value = question;
+            userQuestionInput.focus();
+        });
+        container.appendChild(chip);
+    });
+}
+
+function downloadChat() {
+    if (chatHistory.length === 0) return;
+
+    let chatText = "Historial de conversación:\n\n";
+    chatHistory.forEach(msg => {
+        const prefix = msg.isUser ? "Tú: " : "Asistente: ";
+        const date = new Date(msg.timestamp).toLocaleString();
+        chatText += `${prefix} [${date}]\n${msg.text}\n\n`;
+    });
+
+    const blob = new Blob([chatText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Event listeners para el chat
+sendButton.addEventListener('click', handleUserQuestion);
+userQuestionInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleUserQuestion();
+});
 
 function renderAIResponse(data, container) {
     container.innerHTML = `
@@ -174,3 +352,34 @@ function showError(error) {
     const statusDiv = document.getElementById('status');
     statusDiv.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const toggleButton = document.getElementById('toggleDocument');
+    const documentContent = document.getElementById('documentContent');
+
+    // Estado inicial (descolapsado)
+    let isCollapsed = false;
+
+    toggleButton.addEventListener('click', () => {
+        isCollapsed = !isCollapsed;
+
+        // Alternar clases
+        documentContent.classList.toggle('collapsed', isCollapsed);
+        toggleButton.classList.toggle('collapsed', isCollapsed);
+        toggleButton.innerHTML = isCollapsed
+            ? '<i class="fas fa-chevron-down"></i>'
+            : '<i class="fas fa-chevron-up"></i>';
+
+        // Opcional: Guardar preferencia en localStorage
+        localStorage.setItem('documentCollapsed', isCollapsed);
+    });
+
+    // Opcional: Cargar preferencia guardada
+    const savedState = localStorage.getItem('documentCollapsed');
+    if (savedState === 'true') {
+        isCollapsed = true;
+        documentContent.classList.add('collapsed');
+        toggleButton.classList.add('collapsed');
+        toggleButton.innerHTML = '<i class="fas fa-chevron-down"></i>';
+    }
+});

@@ -1,3 +1,5 @@
+import json
+
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from docx import Document
@@ -20,7 +22,6 @@ genai.configure(api_key=gemini_api_key)
 def index():
     return render_template('index.html')
 
-
 def extract_text(file):
     if file.filename.endswith('.docx'):
         doc = Document(io.BytesIO(file.read()))
@@ -33,6 +34,100 @@ def extract_text(file):
         return [{"text": t} for t in text if t.strip()]
     return []
 
+
+@app.route('/chat', methods=['POST'])
+def chat_with_document():
+    try:
+        data = request.get_json()
+        user_question = data.get('question', '').strip()
+        document_text = data.get('document_text', '').strip()
+
+        if not user_question or not document_text:
+            return jsonify({"error": "Pregunta o texto del documento vacío"}), 400
+
+        model = genai.GenerativeModel('gemini-1.5-flash')
+
+        prompt = (
+            "Actúa como un asistente académico especializado en analizar documentos. "
+            "Responde la pregunta del usuario basándote PRINCIPALMENTE en el contenido "
+            "del documento proporcionado. Sigue estas reglas:\n\n"
+
+            "1) SI la respuesta está DIRECTAMENTE en el documento:\n"
+            "- Extrae la información precisa\n"
+            "- Cita el fragmento relevante entre comillas \"\"\n"
+            "- Responde de manera concisa\n\n"
+
+            "2) SI necesitas COMPLEMENTAR con información externa:\n"
+            "- Primero indica claramente \"Según el documento:\"\n"
+            "- Luego añade \"Información adicional:\" con datos relevantes\n"
+            "- Proporciona EXACTAMENTE 1 referencia académica confiable\n\n"
+
+            "3) SI la pregunta NO está relacionada con el documento:\n"
+            "- Responde amablemente que la respuesta a esa pregunta no se encuentra en el documento subido\n"
+            "- Responde la pregunta de manera concisa añadiendo que según (inserte la fuente aquí) \n\n"
+
+            f"DOCUMENTO:\n{document_text}\n\n"
+            f"PREGUNTA DEL USUARIO:\n{user_question}"
+        )
+
+        response = model.generate_content(prompt)
+
+        # Procesar la respuesta para identificar fuentes externas
+        answer = response.text
+        external_source = None
+
+        if "Información adicional:" in answer:
+            # Buscar fuente en el texto
+            source_match = re.search(r'Fuente:\s*(.+?)\s*(\(https?://[^\s]+)?', answer)
+            if source_match:
+                external_source = {
+                    "name": source_match.group(1),
+                    "url": source_match.group(2)[1:-1] if source_match.group(2) else "https://scholar.google.com"
+                }
+
+        return jsonify({
+            "answer": answer,
+            "external_source": external_source
+        })
+
+    except Exception as e:
+        app.logger.error(f"Error en chat: {str(e)}")
+        return jsonify({"error": "Error en el servidor"}), 500
+
+
+@app.route('/suggestions', methods=['POST'])
+def generate_questions():
+    try:
+        data = request.get_json()
+        document_text = data.get('document_text', '').strip()
+
+        if not document_text:
+            return jsonify({"error": "Texto del documento vacío"}), 400
+
+        model = genai.GenerativeModel('gemini-1.5-flash')
+
+        response = model.generate_content(
+            "Genera exactamente 5 preguntas frecuentes breves (máximo 15 palabras cada una) "
+            "basadas en este documento. Devuélvelas como una lista JSON:\n\n"
+            f"{document_text}"
+        )
+
+        # Extraer las preguntas de la respuesta
+        questions = []
+        print(response.text)
+        if response.text.startswith('[') and response.text.endswith(']'):
+            try:
+                questions = json.loads(response.text)
+            except:
+                # Si falla el parseo, intentar extraer preguntas de otro formato
+                questions = [q.strip() for q in response.text.split('\n') if q.strip()]
+        else:
+            questions = [q.strip() for q in response.text.split('\n') if q.strip()]
+
+        return jsonify({"questions": questions[2:7]})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/process', methods=['POST'])
 def process_file():
