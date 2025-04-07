@@ -4,68 +4,95 @@ let fullDocumentText = '';
 const chatMessages = document.getElementById('chatMessages');
 const userQuestionInput = document.getElementById('userQuestion');
 const sendButton = document.getElementById('sendQuestion');
+let currentUtterance = null;
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';
+
+// Verifica que el worker esté cargado correctamente
+pdfjsLib.getDocument('dummy.pdf').promise.then(() => {
+    console.log('PDF.js worker cargado correctamente');
+}).catch((error) => {
+    console.error('Error cargando PDF.js worker:', error);
+});
 
 let chatHistory = [];
 let isTyping = false;
-const formatText = (text) => {
-    return text
-        .replace(/\*\*/g, '') // Eliminar negritas
-        .split('\n')
-        .map(line => `<p>${line}</p>`)
-        .join('');
-};
 
-const cleanSourceName = (name) => {
-    return name.replace(/[\[\]\(\)\*]/g, '').trim();
-};
 document.getElementById('fileInput').addEventListener('change', async function(e) {
     const file = e.target.files[0];
-    const formData = new FormData();
-    formData.append('file', file);
+    if (!file) return;
 
+    // Validación de tipo de archivo
+    const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const fileType = file.type;
+
+    if (!allowedTypes.includes(fileType) &&
+        !file.name.toLowerCase().endsWith('.pdf') &&
+        !file.name.toLowerCase().endsWith('.docx')) {
+        showError(new Error('Solo se permiten archivos PDF (.pdf) o Word (.docx)'));
+        e.target.value = ''; // Limpiar el input
+        return;
+    }
+
+    // Resto del código de procesamiento...
     showLoading('Procesando documento...');
 
     try {
-        const response = await fetch('/process', { method: 'POST', body: formData });
-        const result = await response.json();
+        const formData = new FormData();
+        formData.append('file', file);
 
-        let paragraphs = [];
-        if (file.name.endsWith('.pdf')) {
-            const pdfDocument = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
-            let textContent = '';
+        const response = await fetch('/process', {
+            method: 'POST',
+            body: formData
+        });
 
-            for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-                const page = await pdfDocument.getPage(pageNum);
-                const content = await page.getTextContent();
-                textContent += content.items.map(item => item.str).join(' ') + '\n';
-            }
-
-            paragraphs = textContent.split('\n').filter(p => p.trim());
-        } else {
-            paragraphs = result.paragraphs;
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Error al procesar el archivo');
         }
 
-        renderParagraphs(paragraphs);
+        const result = await response.json();
+        renderParagraphs(result);
+
     } catch (error) {
         showError(error);
+        console.error('Error:', error);
     } finally {
         hideLoading();
     }
 });
 
+function sanitizeInput(text) {
+    return text.toString()
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\//g, '&#x2F;')
+        .substring(0, 5000)
+        .trim();
+}
+
 function renderParagraphs(paragraphs) {
     const contentDiv = document.getElementById('content');
     contentDiv.innerHTML = '';
-    fullDocumentText = paragraphs.map(p => p.text || p).join('\n\n');
+    const texts = Array.isArray(paragraphs) ?
+        paragraphs.map(p => p.text || p) :
+        [paragraphs];
+
+    fullDocumentText = texts.join('\n\n');
 
     // Generar sugerencias después de cargar el documento
     generateSuggestions();
 
-    paragraphs.forEach((para, index) => {
+    texts.forEach((text, index) => {
+        if (!text) return;  // Saltar textos vacíos
+
         const paraDiv = document.createElement('div');
         paraDiv.className = 'paragraph';
         paraDiv.innerHTML = `
-            <div class="original-text">${para.text || para}</div>
+            <div class="original-text">${text}</div>
             <button class="ai-trigger-button">Obtener información complementaria ⚡</button>
             <div class="ai-response" id="ai-${index}"></div>
         `;
@@ -86,6 +113,7 @@ function renderParagraphs(paragraphs) {
 
         contentDiv.appendChild(paraDiv);
     });
+    setupParagraphEvents()
 }
 
 document.getElementById('downloadChat').addEventListener('click', downloadChat);
@@ -97,23 +125,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 });
 
-function addMessageToChat(text, isUser = false) {
+function addMessageToChat(text, isUser = false, isError = false) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+    messageDiv.className = `message ${isUser ? 'user-message' : isError ? 'error-message' : 'bot-message'}`;
 
-    let processedText = text;
-    processedText = processedText.replace(/"([^"]+)"/g, '<div class="document-quote">$1</div>');
+    if (isError) {
+        messageDiv.innerHTML = `
+            <div class="error-content">
+                <i class="fas fa-exclamation-circle"></i>
+                ${text}
+            </div>
+        `;
+    } else {
+        let processedText = text.replace(/"([^"]+)"/g, '<div class="document-quote">$1</div>');
 
-    if (processedText.includes("Información adicional:")) {
-        const parts = processedText.split("Información adicional:");
-        processedText = parts[0] +
-            '<div class="additional-info"><strong>Información adicional:</strong>' +
-            parts[1].replace(/Fuente:\s*(.+?)\s*(\(https?:\/\/[^\s)]+)?/g,
-            '<div class="external-source">Fuente: <a href="$2" target="_blank">$1</a></div>') +
-            '</div>';
+        if (processedText.includes("Información adicional:")) {
+            const parts = processedText.split("Información adicional:");
+            processedText = parts[0] +
+                '<div class="additional-info"><strong>Información adicional:</strong>' +
+                parts[1].replace(/Fuente:\s*(.+?)\s*(\(https?:\/\/[^\s)]+)?/g,
+                '<div class="external-source">Fuente: <a href="$2" target="_blank">$1</a></div>') +
+                '</div>';
+        }
+
+        messageDiv.innerHTML = processedText;
     }
 
-    messageDiv.innerHTML = processedText;
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
@@ -121,6 +158,7 @@ function addMessageToChat(text, isUser = false) {
     chatHistory.push({
         text: text,
         isUser: isUser,
+        isError: isError,
         timestamp: new Date().toISOString()
     });
 }
@@ -153,8 +191,17 @@ function hideTypingIndicator() {
 }
 
 async function handleUserQuestion() {
-    const question = userQuestionInput.value.trim();
-    if (!question || !fullDocumentText) return;
+    const question = sanitizeInput(userQuestionInput.value);
+
+    if (!question || question.trim().length < 3) {
+        showChatError("La pregunta debe tener al menos 3 caracteres");
+        return;
+    }
+
+    if (!fullDocumentText) {
+        showChatError("Primero sube un documento para poder responder tus preguntas");
+        return;
+    }
 
     addMessageToChat(question, true);
     userQuestionInput.value = '';
@@ -170,58 +217,111 @@ async function handleUserQuestion() {
             })
         });
 
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
+        if (!response.ok) {
+            const errorData = await response.json();
+            if (errorData.error === "rate_limit_exceeded") {
+                showChatError(errorData.message);
+            } else {
+                throw new Error(errorData.error || "Error en el servidor");
+            }
+            return;
+        }
 
+        const data = await response.json();
         hideTypingIndicator();
         addMessageToChat(data.answer);
 
     } catch (error) {
         hideTypingIndicator();
-        addMessageToChat(`Error: ${error.message}`);
+        showChatError(`Error: ${error.message}`);
+        console.error("Error en el chat:", error);
     }
 }
 
+function showChatError(message) {
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'rate-limit-error';
+    errorDiv.innerHTML = `
+        <div class="error-content">
+            <i class="fas fa-exclamation-triangle"></i>
+            ${message}
+        </div>
+    `;
+    chatMessages.appendChild(errorDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Agregar al historial
+    chatHistory.push({
+        text: message,
+        isUser: false,
+        isError: true,
+        timestamp: new Date().toISOString()
+    });
+}
+
 async function generateSuggestions() {
-    if (!fullDocumentText) return;
+    if (!fullDocumentText || fullDocumentText.trim().length === 0) {
+        console.log('No hay texto del documento para generar sugerencias');
+        return;
+    }
+
+    showLoading('Generando sugerencias...', document.getElementById('chatStatus'));
 
     try {
         const response = await fetch('/suggestions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                document_text: fullDocumentText
-            })
+            body: JSON.stringify({ document_text: fullDocumentText })
         });
 
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
+        if (!response.ok) {
+            throw new Error('Error al generar sugerencias');
+        }
 
-        displaySuggestions(data.questions);
+        const data = await response.json();
+
+        if (data.questions && data.questions.length > 0) {
+            displaySuggestions(data.questions);
+        } else {
+            console.log('No se recibieron preguntas sugeridas');
+            // Mostrar preguntas por defecto
+            displaySuggestions([
+                "¿Cuál es el tema principal?",
+                "¿Qué métodos se mencionan?",
+                "¿Cuáles son las conclusiones?",
+                "¿Hay datos estadísticos relevantes?",
+                "¿Qué fuentes se citan?"
+            ]);
+        }
     } catch (error) {
-        console.error("Error generando sugerencias:", error);
-        // Fallback: generar sugerencias localmente
-        const fallbackQuestions = [
+        console.error('Error generando sugerencias:', error);
+        displaySuggestions([
             "¿Cuál es el tema principal?",
             "¿Qué métodos se mencionan?",
-            "¿Cuáles son las conclusiones?",
-            "¿Quiénes son los autores?",
-            "¿Qué fuentes se citan?"
-        ];
-        displaySuggestions(fallbackQuestions);
+            "¿Cuáles son las conclusiones?"
+        ]);
+    } finally {
+        hideLoading(document.getElementById('chatStatus'));
     }
 }
 
 function displaySuggestions(questions) {
     const container = document.getElementById('suggestionsList');
+    if (!container) {
+        console.error('El contenedor de sugerencias no existe');
+        return;
+    }
+
     container.innerHTML = '';
 
-    questions.forEach(question => {
+    questions.slice(0, 5).forEach(question => {
+        if (!question || typeof question !== 'string') return;
+
         const chip = document.createElement('div');
         chip.className = 'suggestion-chip';
-        chip.textContent = question;
+        chip.textContent = question.trim();
         chip.addEventListener('click', () => {
-            userQuestionInput.value = question;
+            userQuestionInput.value = question.trim();
             userQuestionInput.focus();
         });
         container.appendChild(chip);
@@ -233,9 +333,9 @@ function downloadChat() {
 
     let chatText = "Historial de conversación:\n\n";
     chatHistory.forEach(msg => {
-        const prefix = msg.isUser ? "Tú: " : "Asistente: ";
+        const prefix = msg.isUser ? "Tú: " : msg.isError ? "ERROR: " : "Asistente: ";
         const date = new Date(msg.timestamp).toLocaleString();
-        chatText += `${prefix} [${date}]\n${msg.text}\n\n`;
+        chatText += `${prefix}[${date}]\n${msg.text}\n\n`;
     });
 
     const blob = new Blob([chatText], { type: 'text/plain' });
@@ -255,89 +355,138 @@ userQuestionInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handleUserQuestion();
 });
 
-function renderAIResponse(data, container) {
-    container.innerHTML = `
-        <div class="ai-header">📚 INFORMACIÓN AMPLIADA:</div>
-        <div class="ai-content">
-            ${data.complement.replace(/\n/g, '<br>')}
-        </div>
-        <div class="ai-sources">
-            <div class="sources-title">🔍 FUENTES:</div>
-            ${data.sources.map(s => `
-                <a href="${s.url}" target="_blank" class="source-link">
-                    ${s.name.replace(/\*\*/g, '')} <i class="link-icon fas fa-external-link-alt"></i>
-                </a>
-            `).join('')}
-        </div>
-    `;
-}
-
 async function fetchComplement(text, aiResponseElement) {
-    aiResponseElement.innerHTML = '<div class="debug">Cargando...</div>';
+    if (!text || text.trim().length < 10) {  // Mínimo 10 caracteres
+        aiResponseElement.innerHTML = '<div class="error">Texto demasiado corto para complementar</div>';
+        aiResponseElement.style.display = 'block';
+        return;
+    }
+
+    aiResponseElement.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Analizando texto...</div>';
     aiResponseElement.style.display = 'block';
 
     try {
         const response = await fetch('/complement', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+            },
             body: JSON.stringify({ text: text })
         });
 
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${await response.text()}`);
+        }
+
         const data = await response.json();
-        renderAIResponse(data, aiResponseElement);
+
+        // Mostrar resultados
+        aiResponseElement.innerHTML = `
+            <div class="ai-complement">
+                <h4>Información complementaria:</h4>
+                <div class="complement-content">${data.complement.replace(/\n/g, '<br>')}</div>
+                ${data.sources.length > 0 ? `
+                <div class="sources">
+                    <h5>Fuentes:</h5>
+                    ${data.sources.map(source => `
+                        <a href="${source.url}" target="_blank" class="source-link">
+                            ${source.name} <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    `).join('')}
+                </div>
+                ` : ''}
+            </div>
+        `;
+
     } catch (error) {
-        aiResponseElement.innerHTML = `<div style="color: red; padding: 10px; background: #ffeef0;">ERROR: ${error.message}</div>`;
+        console.error('Error al complementar:', error);
+        aiResponseElement.innerHTML = `
+            <div class="error">
+                <i class="fas fa-exclamation-triangle"></i> Error al obtener información: ${error.message}
+            </div>
+        `;
     }
 }
 
 
-async function handleParagraphClick(paraDiv, text) {
-    if (currentParagraph === paraDiv) return;
-
-    currentParagraph = paraDiv;
-    const aiResponse = paraDiv.querySelector('.ai-response');
-    aiResponse.innerHTML = '<div class="debug">Cargando...</div>'; // Debug 1
-    aiResponse.style.display = 'block'; // Forzar visibilidad
-
-    synth.cancel();
+// Función modificada para leer texto
+function readTextAloud(text) {
+    // Cancelar lectura anterior
+    if (currentUtterance) {
+        synth.cancel();
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
-    synth.speak(utterance);
+    currentUtterance = utterance;
 
-    utterance.onend = async () => {
-        try {
-            console.log("Enviando texto al backend:", text); // Debug 2
-            const response = await fetch('/complement', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text })
-            });
+    // Configurar voz en español si está disponible
+    const voices = synth.getVoices();
+    const spanishVoice = voices.find(voice => voice.lang.includes('es-') || voice.lang.includes('ES'));
+    if (spanishVoice) {
+        utterance.voice = spanishVoice;
+    }
 
-            console.log("Respuesta HTTP:", response.status); // Debug 3
-            const data = await response.json();
-            console.log("Datos recibidos:", data); // Debug 4
-
-            // Renderizado final con estilos forzados
-            aiResponse.innerHTML = `
-                <div class="ai-header" style="color: #2c3e50; font-weight: bold; margin-bottom: 10px;">📚 INFORMACIÓN AMPLIADA:</div>
-                <div class="ai-content" style="white-space: pre-wrap; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                    ${data.complement.replace(/\n/g, '<br>')}
-                </div>
-                <div class="ai-sources" style="border-top: 1px solid #ddd; padding-top: 10px;">
-                    <div style="font-weight: bold; margin-bottom: 8px;">🔍 FUENTES:</div>
-                    ${data.sources.map(s => `
-                        <a href="${s.url}" target="_blank" style="display: block; color: #1a73e8; text-decoration: none; padding: 5px; margin: 3px 0; border-radius: 4px; background: #e8f0fe;">
-                            ${s.name.replace(/\*\*/g, '')} ↗
-                        </a>
-                    `).join('')}
-                </div>
-            `;
-
-        } catch (error) {
-            aiResponse.innerHTML = `<div style="color: red; padding: 10px; background: #ffeef0;">ERROR: ${error.message}</div>`;
-            console.error("Error detallado:", error); // Debug 5
-        }
+    // Evento para manejar errores
+    utterance.onerror = (event) => {
+        console.error('Error en lectura de voz:', event);
+        alert('Error al leer el texto. Asegúrate de permitir audio en esta página.');
     };
+
+    synth.speak(utterance);
+}
+
+
+
+function handleParagraphClick(paraDiv, text) {
+    // Resaltar el párrafo seleccionado
+    document.querySelectorAll('.paragraph').forEach(p => {
+        p.style.backgroundColor = 'transparent';
+    });
+    paraDiv.style.backgroundColor = '#f0f5ff';
+
+    // Leer el texto
+    readTextAloud(text);
+
+    // Quitar resaltado cuando termine la lectura
+    const checkCompletion = setInterval(() => {
+        if (!synth.speaking) {
+            paraDiv.style.backgroundColor = 'transparent';
+            clearInterval(checkCompletion);
+        }
+    }, 500);
+}
+
+function setupParagraphEvents() {
+    document.querySelectorAll('.paragraph').forEach(paraDiv => {
+        const textElement = paraDiv.querySelector('.original-text');
+        const button = paraDiv.querySelector('.ai-trigger-button');
+        const aiResponse = paraDiv.querySelector('.ai-response');
+
+        // Limpiar eventos previos
+        textElement.onclick = null;
+        button.onclick = null;
+
+        // Nuevos eventos
+        textElement.onclick = () => {
+            const text = textElement.textContent;
+            handleParagraphClick(paraDiv, text);
+        };
+
+        button.onclick = (e) => {
+            e.stopPropagation();
+            const text = textElement.textContent;
+            fetchComplement(text, aiResponse);
+        };
+    });
+}
+
+function handleTextClick(paraDiv, text) {
+    handleParagraphClick(paraDiv, text);
+}
+
+async function handleButtonClick(e, text, aiResponse) {
+    e.stopPropagation();
+    await fetchComplement(text, aiResponse);
 }
 
 function showLoading(message, container = document.getElementById('status')) {
@@ -349,8 +498,26 @@ function hideLoading(container = document.getElementById('status')) {
 }
 
 function showError(error) {
-    const statusDiv = document.getElementById('status');
-    statusDiv.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
+    // Esta función ahora solo maneja errores de archivos
+    const fileError = document.getElementById('fileError');
+    const uploadSection = document.querySelector('.custom-upload');
+
+    if (fileError && uploadSection) {
+        fileError.textContent = error.message;
+        fileError.style.display = 'block';
+        uploadSection.classList.add('invalid');
+
+        setTimeout(() => {
+            fileError.style.display = 'none';
+            uploadSection.classList.remove('invalid');
+        }, 3000);
+    } else {
+        // Fallback: mostrar en el área de estado
+        const statusDiv = document.getElementById('status');
+        if (statusDiv) {
+            statusDiv.innerHTML = `<div style="color: red;">Error: ${error.message}</div>`;
+        }
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

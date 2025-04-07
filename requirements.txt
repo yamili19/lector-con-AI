@@ -1,10 +1,17 @@
-Flask==2.0.3
-Werkzeug==2.0.3
-gunicorn==20.1.0
-flask-cors==4.0.0
-python-docx==0.8.11
-pdfminer.six==20211012
-PyPDF2==3.0.0
-google-generativeai==0.3.2
-python-dotenv==1.0.0
+Flask
+Werkzeug
+gunicorn
+flask-cors
+python-docx
+pdfminer.six
+PyPDF2
+google-generativeai
+python-dotenv
+python-magic
+bleach
+flask-talisman
+python-magic-bin
+pyopenssl
+flask_limiter
+
 
