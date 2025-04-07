@@ -7,7 +7,6 @@ pdfminer.six
 PyPDF2
 google-generativeai
 python-dotenv
-python-magic
 bleach
 flask-talisman
 python-magic-bin
