@@ -9,7 +9,7 @@ google-generativeai
 python-dotenv
 bleach
 flask-talisman
-python-magic-bin
+python-magic
 pyopenssl
 flask_limiter
 
