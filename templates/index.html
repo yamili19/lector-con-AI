@@ -32,6 +32,14 @@
         <div class="document-section">
             <div class="section-header">
                 <h2>Documento</h2>
+                <div class="voice-controls" id="voiceControls">
+                    <button id="playPauseBtn" onclick="togglePauseReading()" disabled>
+                        <i class="fas fa-play"></i> Leer
+                    </button>
+                    <button id="stopBtn" onclick="stopReading()" disabled>
+                        <i class="fas fa-stop"></i> Detener
+                    </button>
+                </div>
                 <button id="toggleDocument" class="collapse-button">
                     <i class="fas fa-chevron-up"></i>
                 </button>

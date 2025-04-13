@@ -510,6 +510,47 @@ body {
     transform: rotate(180deg);
 }
 
+.voice-controls {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    align-items: center;
+}
+
+.voice-controls button {
+    background-color: #4a6fa5;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.voice-controls button:hover {
+    background-color: #3a5a8a;
+}
+
+.voice-controls button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.voice-controls button i {
+    font-size: 12px;
+}
+
+/* Resaltado de párrafo durante lectura */
+.paragraph-highlight {
+    background-color: #f0f5ff !important;
+    transition: background-color 0.3s ease;
+}
+
 /* Ajustes responsivos */
 @media (max-width: 768px) {
     .document-content {
